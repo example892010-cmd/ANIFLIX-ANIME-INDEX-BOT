@@ -1,15 +1,38 @@
 # ANIFLIX ANIME INDEX BOT
 
-A production-oriented Telegram anime catalogue bot built with Python 3.11, aiogram 3, SQLite, and pytest. It supports private-chat and eligible group searches from one central catalogue, bulk imports, aliases, a shared landscape poster, backups, and Railway deployment.
+A Telegram anime catalogue bot built with Python 3.11, aiogram 3, SQLite, and pytest. It supports one central catalogue for private chats and eligible public/private groups, bulk imports, aliases, a shared landscape poster, a configurable global post-text template, backups, and Railway deployment.
 
 ## Features
 
-- Case-insensitive exact, partial, and alias search in private chats and group chats.
-- SQLite-only persistence (`DATABASE_PATH`, default `data/aniflix.db`) with foreign keys, WAL mode, unique title/URL constraints, and non-destructive startup.
-- Authorized `/admin` inline panel with statistics, bulk add, backup, restore, shared poster guidance, welcome message, settings, and administration controls. Every displayed option has a callback handler; configuration-only options explain their safe operational path.
-- Bulk format: `🍥 Naruto - https://example.com/naruto - green (post text)`. Valid lines save independently; duplicates and invalid lines are counted accurately.
-- One shared landscape image for all results. It is separate from individual artwork management.
-- Versioned `ANIFLIX_Anime_Backup.json` export and validated, additive restore.
+- Exact, case-insensitive, partial, and alias search without commands in private chats and eligible groups.
+- SQLite-only persistence (`DATABASE_PATH`, default `data/aniflix.db`) with foreign keys, WAL mode, indexes, unique title/URL constraints, and non-destructive startup.
+- Authorized `/admin` inline panel with statistics, single/bulk add, edit, delete, links, aliases, global post text, shared poster, welcome/start image, backups, restore, and settings.
+- Bulk format: `🍥 Naruto - https://example.com/naruto - green (post text)`. Color is optional and defaults to blue. Valid lines save independently and the response includes line-level diagnostics.
+- One shared landscape image for all results. It is separate from the global post text and from optional individual poster metadata.
+- Versioned `ANIFLIX_Anime_Backup.json` export and validated, confirmation-based additive restore.
+
+## Global Post Text
+
+The separate **📝 Post Text** menu controls one SQLite-backed template for all results. Its exact default is:
+
+```text
+🍥 {anime_title}
+
+🎭 Genre: Action | Adventure | Comedy
+🎙️ Audio: Tamil
+📺 Quality: 480p | 720p | 1080p
+
+👇 Click the below button to download episodes!
+
+⚠️ If Any Issues, Message here:
+https://t.me/+4YfcdPoSdK9jYmVl
+
+🔗 Click the below button to join!
+```
+
+Use **Edit Post Text** to replace the complete template and **Preview** to render a sample title. `{anime_title}` is replaced immediately at send time. If an anime has non-empty individual `post_text`, that individual text takes precedence; otherwise the global template is used. The download button always uses that anime record's own URL.
+
+The separate **📝 Manage Posts** menu controls only the shared landscape image. If the image is unavailable or the caption exceeds Telegram's 1024-character photo-caption limit, the bot falls back to text messages without changing the download link.
 
 ## Local setup
 
@@ -33,29 +56,25 @@ No MongoDB variables, packages, or services are used.
 
 ## Telegram and group configuration
 
-1. In BotFather, create a bot and put the token in Railway or `.env`; do not commit it.
-2. Set `OWNER_ID` and optional `ADMIN_IDS`.
-3. Add the bot to each target group and grant administrator permissions sufficient to read and reply to messages. Telegram group behavior also depends on privacy mode.
-4. For direct, non-command group searches, disable privacy mode in BotFather with `/setprivacy` → select the bot → `Disable`. This is not changed by the application and must be done manually. If privacy mode remains enabled, Telegram may not deliver ordinary messages to the bot.
-5. Test with different group IDs and a private chat after deployment. The application does not hardcode group IDs or require group registration.
+1. Create the bot with BotFather and put the token in Railway or `.env`; never commit it.
+2. Set `OWNER_ID` and optional `ADMIN_IDS`. Group administrator status does not grant access to `/admin`.
+3. Add the bot to each target group and grant permission to read and reply to messages.
+4. For direct, non-command group searches, use BotFather `/setprivacy` → select the bot → `Disable`. The application cannot change BotFather settings. With privacy mode enabled, Telegram may not deliver ordinary group messages.
+5. Test a private chat and multiple group IDs after deployment. No group registration or hardcoded group ID is used.
 
 ## Railway deployment and persistence
 
-Deploy this repository as a Railway service using the included `Dockerfile` or `railway.toml`. Configure the environment variables in the Railway service. Attach a Railway Volume mounted at `/app/data`; the included config uses `/app/data` for the database and media directory. Set `DATABASE_PATH=/app/data/aniflix.db` and optionally `MEDIA_DIR=/app/data/media` explicitly if desired. Persistence across deployments depends on the volume being attached and mounted correctly; it is not guaranteed by the container alone. View startup and polling logs in Railway.
+Deploy with the included `Dockerfile` or `railway.toml`. Set `BOT_TOKEN`, `OWNER_ID`, and optional `ADMIN_IDS` in the Railway service. Attach a Railway Volume mounted at `/app/data`. Set `DATABASE_PATH=/app/data/aniflix.db` and `MEDIA_DIR=/app/data/media` so SQLite and Telegram media references are under the persistent mount. Persistence depends on the volume being correctly attached and mounted; it has not been live-verified here. View startup/polling logs in Railway. Run one polling worker for SQLite concurrency safety.
 
-## Admin operations
+## Admin usage
 
-Use `/admin` as the owner or an authorized ID. Send a multiline bulk list for immediate import. Use `/setwelcome text` to set the welcome message. Reply to a landscape photo with `/setposter`; the file ID is stored in SQLite and used for every search result. Upload `ANIFLIX_Anime_Backup.json` for validated additive restore. Backups never include tokens or user secrets.
+Use `/admin` as the owner or configured admin. The **➕ Add Anime** and **📦 Bulk Add Anime** buttons set a one-message workflow. `/edit <id> <new title>`, `/setlink <id> <https URL>`, `/delete <id>`, `/addalias <id> <alias>`, and `/removealias <id> <alias>` provide safe catalogue maintenance. `/setwelcome text` saves the welcome message. Reply to a photo with `/setposter` or use **Manage Posts → Set Landscape Poster**. `/setstartimage` configures the start image. Upload `ANIFLIX_Anime_Backup.json` to preview and confirm an additive restore. `/cancel` cancels pending workflows.
 
-Search history stores only user ID, chat ID, a truncated query, and timestamp for basic statistics. Do not put sensitive information in search messages; administrators should treat the database as private.
-
-## Tests and limitations
-
-Run:
+## Tests
 
 ```bash
 pytest -q
 python -m compileall -q .
 ```
 
-Live Telegram API behavior, BotFather privacy settings, and Railway volume persistence require manual verification with real credentials and are not claimed as tested in this repository. The shared poster uses Telegram `file_id`, with a text fallback if Telegram cannot retrieve it. SQLite is designed for one polling worker, as configured here.
+The suite uses temporary SQLite databases and covers parser errors, 55 valid entries saved/retrieved, mixed batches, repeated imports, duplicates, aliases, CRUD, correct links, global post-text substitution and restart persistence, backup validation, and configuration. Live Telegram API behavior, BotFather privacy settings, and Railway volume persistence require manual verification with real credentials and are not claimed as tested.
