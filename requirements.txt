@@ -1,0 +1,5 @@
+aiogram==3.22.0
+aiosqlite==0.21.0
+python-dotenv==1.1.1
+pytest==8.4.2
+pytest-asyncio==1.2.0
